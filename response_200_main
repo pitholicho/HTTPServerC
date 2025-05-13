@@ -1,0 +1,15 @@
+HTTP/1.1 200 OK
+Content-Type: text/html
+Content-Length: 143
+Connection: close
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Meu Server</title>
+</head>
+<body>
+    <h1>Servidor HTTP Simples</h1>
+    <p>Bem-vindo à minha página inicial!</p>
+</body>
+</html>

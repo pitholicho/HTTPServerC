@@ -6,18 +6,114 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 
-
-int GET_resolver(char **parts, int size){
-
-    for (int i = 0; i < size; i++)
+int get_response(int client_socket)
+{
+    FILE *OK_200;
+    char buffer[1024];
+    size_t bytes_read;
+    OK_200 = fopen("/home/kali/Desktop/C/response_200_main", "r");
+    if(OK_200 == NULL){
+        perror("Error to open OK_200 file");
+    }
+    while ((bytes_read = fread(buffer, 1, sizeof(buffer), OK_200)))
     {
-        printf("[DEBUG] %i - %s\n", i,parts[i]);
-    } 
-
+        send(client_socket, buffer, bytes_read, 0);
+    }
+    fclose(OK_200);
     return 0;
 }
 
-int http_GET(char *get_recv)
+char* version_resolver(char *str)
+{
+    if(strcmp(str, "HTTP/1.1") == 0)
+        return str;
+}
+
+char* path_resolver(char *str)
+{
+    if(strcmp(str, "/") == 0)
+        return str;
+}
+
+char* method_resolver(char *str)
+{
+    if(strcmp(str, "GET") == 0)
+        return str;
+    if(strcmp(str, "POST") == 0)
+        return str;
+    if(strcmp(str, "PUT") == 0)
+        return str;
+    if(strcmp(str, "DELET") == 0)
+        return str;
+    if(strcmp(str, "HEAD") == 0)
+        return str;
+    if(strcmp(str, "OPTIONS") == 0)
+        return str;
+    if(strcmp(str, "PATCH") == 0)
+        return str;
+}
+
+int request_resolver(char **parts, int size, int client_socket){
+    char *cache, *method, *path, *version, *host, *port;
+    int j = 0;
+    for (int i = 0; i < size; i++)
+    {
+        if(i == 0){
+            cache = strtok(parts[i], " ");
+            method = method_resolver(cache);
+            printf("\n\n[DEBBUG] %i - %s\n", i, cache);
+            while (cache != NULL)
+            {
+                cache = strtok(NULL, " ");
+                printf("[DEBBUG] %i - %s\n", i, cache);
+                if(j == 0){
+                path = path_resolver(cache);
+                } else if(j == 1){
+                version = version_resolver(cache);
+                }
+                j++;
+            }
+            printf("[DEBUG] %s %s %s\n\n", method, path, version);
+        } else if(strcmp(method, "GET") == 0){
+            cache = strtok(parts[i], "\r\n");
+            if(cache != NULL){
+                cache = strtok(parts[i], ":");
+                while (cache != NULL)
+                {
+                    printf("[DEBBUG] %i - %s\n", i, cache);
+                    if(strcmp(cache, "Host") == 0){
+                        j = 1;
+                    } else if(j == 1){
+                        host = cache;
+                        j++;
+                    } else if(j == 2){
+                        port = cache;
+                        printf("[DEBUG] %s:%s\n\n", host, port);
+                    }
+                    cache = strtok(NULL, ":");
+                }  
+            }  
+        } else {
+            cache = strtok(parts[i], "\r\n");
+            if(cache != NULL){
+                cache = strtok(parts[i], ":");
+                while (cache != NULL)
+                {
+                    printf("[DEBBUG] %i - %s\n", i, cache);
+                    cache = strtok(NULL, ":");
+                }  
+            }  
+        }
+        printf("\n");
+        j = 0;
+    } 
+    if(strcmp(method, "GET") == 0){
+        get_response(client_socket);
+    }
+    return 0;
+}
+
+int http_request(char *get_recv, int client_socket)
 {
     int i = 0, cap = 10;
     char **parts = malloc(cap * sizeof(char *));
@@ -34,7 +130,7 @@ int http_GET(char *get_recv)
             parts = realloc(parts, cap  * sizeof(char*));
         } 
     }
-    GET_resolver(parts, i);
+    request_resolver(parts, i, client_socket);
     
     for (int j = 0; j < i; j++)
     {
@@ -45,14 +141,14 @@ int http_GET(char *get_recv)
     return 0;
 }
 
-int http_request_resolver(int client_socket)
+int http_request_recv(int client_socket)
 {
     char *buffer = (char *)malloc(1024);
     int bytes_recv = recv(client_socket, buffer, 1024, 0);
     buffer[bytes_recv] = '\0';
-    printf("[DEBBUG] - %i\n\n", bytes_recv);
+    //printf("[DEBBUG] - %i\n\n", bytes_recv);
     if(strstr(buffer, "GET /"))
-        http_GET(buffer);
+        http_request(buffer, client_socket);
 
     return 0;
 }
@@ -87,7 +183,7 @@ int server_socket_open()
 
     socklen_t client_size = sizeof(client_addr);
     int client_sock = accept(socket_server, (struct sockaddr*)&client_addr, &client_size);
-    http_request_resolver(client_sock);
+    http_request_recv(client_sock);
 
     return 0;
 }

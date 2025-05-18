@@ -6,33 +6,53 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 
-int get_response(int client_socket)
+int get_response(int client_socket, int code, int verify)
 {
-    FILE *OK_200;
-    char buffer[1024];
-    size_t bytes_read;
-    OK_200 = fopen("/home/kali/Desktop/C/response_200_main", "r");
-    if(OK_200 == NULL){
-        perror("Error to open OK_200 file");
+    printf("[code deb] - %i", code);
+    if(code == 0){
+        FILE *OK_200;
+        char buffer[1024];
+        size_t bytes_read;
+        OK_200 = fopen("/home/kali/Desktop/C/response_200_main", "r");
+        if(OK_200 == NULL){
+            perror("Error to open OK_200 file");
+        }else {
+            while ((bytes_read = fread(buffer, 1, sizeof(buffer), OK_200)))
+            {
+                send(client_socket, buffer, bytes_read, 0);
+            }
+            fclose(OK_200);
+        }
+    } else {
+        FILE *ERROR_404;
+        char buffer[1024];
+        size_t bytes_read;
+        ERROR_404 = fopen("/home/kali/Desktop/C/response_404", "r");
+        if(ERROR_404 == NULL){
+            perror("Error to open OK_200 file");
+        }else {
+            while ((bytes_read = fread(buffer, 1, sizeof(buffer), ERROR_404)))
+            {
+                send(client_socket, buffer, bytes_read, 0);
+            }
+            fclose(ERROR_404);
+        }
     }
-    while ((bytes_read = fread(buffer, 1, sizeof(buffer), OK_200)))
-    {
-        send(client_socket, buffer, bytes_read, 0);
-    }
-    fclose(OK_200);
-    return 0;
+    return 1;
 }
 
 char* version_resolver(char *str)
 {
     if(strcmp(str, "HTTP/1.1") == 0)
         return str;
+    return "1";
 }
 
 char* path_resolver(char *str)
 {
     if(strcmp(str, "/") == 0)
         return str;
+    return "1";
 }
 
 char* method_resolver(char *str)
@@ -53,8 +73,9 @@ char* method_resolver(char *str)
         return str;
 }
 
-int request_resolver(char **parts, int size, int client_socket){
+int request_resolver(char **parts, int size, int client_socket, int admin){
     char *cache, *method, *path, *version, *host, *port;
+    int verify = 0;
     int j = 0;
     for (int i = 0; i < size; i++)
     {
@@ -72,6 +93,10 @@ int request_resolver(char **parts, int size, int client_socket){
                 version = version_resolver(cache);
                 }
                 j++;
+            }
+            if(atoi(path) == 1 || atoi(version) == 1){
+                verify = 1;
+                printf("[verify] - %i\n", verify);
             }
             printf("[DEBUG] %s %s %s\n\n", method, path, version);
         } else if(strcmp(method, "GET") == 0){
@@ -107,13 +132,15 @@ int request_resolver(char **parts, int size, int client_socket){
         printf("\n");
         j = 0;
     } 
+    printf("[verify] - %i", verify);
     if(strcmp(method, "GET") == 0){
-        get_response(client_socket);
-    }
+        get_response(client_socket, verify, admin);
+    } else {}
+
     return 0;
 }
 
-int http_request(char *get_recv, int client_socket)
+int http_request(char *get_recv, int client_socket, int verify)
 {
     int i = 0, cap = 10;
     char **parts = malloc(cap * sizeof(char *));
@@ -121,7 +148,7 @@ int http_request(char *get_recv, int client_socket)
     while (line != NULL)
     {
         parts[i] = strdup(line);
-        printf("[DEBBUG] %i- %s\n", i ,parts[i]);
+        //printf("[DEBBUG] %i- %s\n", i ,parts[i]);
         line = strtok(NULL, "\r\n");
         i++;
         if (i >= cap)
@@ -130,7 +157,7 @@ int http_request(char *get_recv, int client_socket)
             parts = realloc(parts, cap  * sizeof(char*));
         } 
     }
-    request_resolver(parts, i, client_socket);
+    request_resolver(parts, i, client_socket, verify);
     
     for (int j = 0; j < i; j++)
     {
@@ -141,20 +168,21 @@ int http_request(char *get_recv, int client_socket)
     return 0;
 }
 
-int http_request_recv(int client_socket)
+int http_request_recv(int client_socket, int verify)
 {
     char *buffer = (char *)malloc(1024);
     int bytes_recv = recv(client_socket, buffer, 1024, 0);
     buffer[bytes_recv] = '\0';
     //printf("[DEBBUG] - %i\n\n", bytes_recv);
     if(strstr(buffer, "GET /"))
-        http_request(buffer, client_socket);
+        http_request(buffer, client_socket, verify);
 
     return 0;
 }
 
 int server_socket_open()
 {   
+    int admin = 1;
     int opt = 1;
     int socket_server = socket(AF_INET, SOCK_STREAM, 0);
     if(socket_server == -1){
@@ -183,7 +211,11 @@ int server_socket_open()
 
     socklen_t client_size = sizeof(client_addr);
     int client_sock = accept(socket_server, (struct sockaddr*)&client_addr, &client_size);
-    http_request_recv(client_sock);
+    printf("%s\n", inet_ntoa(client_addr.sin_addr));
+    if(strcmp("127.0.0.1", inet_ntoa(client_addr.sin_addr)) == 0){
+        admin = 0;
+        http_request_recv(client_sock, admin);
+    }
 
     return 0;
 }
